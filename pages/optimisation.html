@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Optimisation - Planner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="../assets/css/style.css" />
+  <style>
+    .result-item { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.8rem; margin-bottom: 0.6rem; }
+    .result-title { font-weight: 600; color: #334155; margin: 0 0 0.25rem 0; }
+    .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 999px; font-size: 11px; font-weight: 600; }
+    .badge-high { background: #fee2e2; color: #b91c1c; }
+    .badge-medium { background: #e2e8f0; color: #334155; }
+    .badge-low { background: #d1fae5; color: #0f766e; }
+    .badge-urgent { background: #fef2f2; color: #ef4444; }
+    .textarea { width: 100%; min-height: 160px; font-family: Consolas, 'Courier New', monospace; }
+    .flex-row { display: flex; gap: 0.8rem; flex-wrap: wrap; }
+    .pill { background: #e2e8f0; color: #334155; border-radius: 999px; padding: 0.2rem 0.6rem; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div id="userNav"></div>
+      <div class="brand">
+        <div class="brand-icon"><span>PL</span></div>
+        <div class="brand-text">
+          <strong>Planner</strong>
+          <span>Gestion du temps</span>
+        </div>
+      </div>
+      <div>
+        <p class="nav-section-title">Navigation</p>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html"><span><span class="dot"></span>Tableau de bord</span></a></li>
+          <li class="nav-item"><a href="activities.html"><span><span class="dot"></span>Activités</span></a></li>
+          <li class="nav-item"><a href="constraints.html"><span><span class="dot"></span>Contraintes</span></a></li>
+          <li class="nav-item"><a class="active" href="optimisation.html"><span><span class="dot"></span>Optimisation</span></a></li>
+          <li class="nav-item"><a href="planning.html"><span><span class="dot"></span>Planning</span></a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="main-header">
+        <div class="main-title-block">
+          <h1>Optimisation automatique</h1>
+          <p>Générez un planning optimal en respectant contraintes et priorités.</p>
+        </div>
+      </header>
+
+      <section class="main-grid page-section">
+        <article class="card" style="grid-column: 1 / -1;">
+          <div class="card-header">
+            <h2>Paramètres</h2>
+          </div>
+          <div class="form-grid">
+            <div class="form-row">
+              <label for="dateDebut">Date début</label>
+              <input id="dateDebut" type="datetime-local" />
+            </div>
+            <div class="form-row">
+              <label for="dateFin">Date fin</label>
+              <input id="dateFin" type="datetime-local" />
+            </div>
+          </div>
+
+          <div class="form-row" style="margin-top: 1rem;">
+            <label for="activitesJson">Activités (JSON, optionnel)</label>
+            <textarea id="activitesJson" class="textarea" placeholder='[
+  { "titre": "Code review", "dureeHeures": 1, "priorite": "HAUTE" },
+  { "titre": "Tests unitaires", "dureeHeures": 3, "priorite": "NORMALE" }
+]'></textarea>
+          </div>
+
+          <div class="flex-row" style="margin-top: 0.5rem;">
+            <button class="btn btn-primary" id="runDefault">Générer (modèle auto)</button>
+            <button class="btn btn-ghost" id="runCustom">Générer (avec JSON)</button>
+            <button class="btn btn-success" id="applyBtn" disabled>Appliquer au planning</button>
+            <span id="statusText" class="pill" style="display: none;">En cours...</span>
+          </div>
+        </article>
+
+        <article class="card" style="grid-column: 1 / -1;">
+          <div class="card-header">
+            <h2>Résultat</h2>
+            <span id="resultCount">0 activité</span>
+          </div>
+          <div id="resultContainer">
+            <p style="text-align: center; color: #94a3b8;">Aucun résultat pour le moment</p>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <script src="../assets/js/shared.js"></script>
+  <script>
+    function formatDateInput(date) {
+      const pad = (n) => n.toString().padStart(2, '0');
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }
+
+    function setDefaultDates() {
+      const start = new Date();
+      start.setHours(8, 0, 0, 0);
+      const end = new Date();
+      end.setDate(end.getDate() + 2);
+      end.setHours(18, 0, 0, 0);
+      document.getElementById('dateDebut').value = formatDateInput(start);
+      document.getElementById('dateFin').value = formatDateInput(end);
+    }
+
+    function renderResults(list) {
+      const container = document.getElementById('resultContainer');
+      const count = document.getElementById('resultCount');
+      count.textContent = `${list.length} activité(s)`;
+
+      if (!list.length) {
+        container.innerHTML = '<p style="text-align: center; color: #94a3b8;">Aucun résultat</p>';
+        return;
+      }
+
+      const badge = (p) => {
+        if (!p) return '<span class="badge badge-medium">NORMALE</span>';
+        const up = p.toUpperCase();
+        if (up === 'URGENTE') return '<span class="badge badge-urgent">URGENTE</span>';
+        if (up === 'HAUTE') return '<span class="badge badge-high">HAUTE</span>';
+        if (up === 'BASSE') return '<span class="badge badge-low">BASSE</span>';
+        return '<span class="badge badge-medium">NORMALE</span>';
+      };
+
+      const html = list.map(a => `
+        <div class="result-item">
+          <div class="flex-row" style="justify-content: space-between; align-items: center;">
+            <h3 class="result-title">${escapeHtml(a.titre || 'Sans titre')}</h3>
+            ${badge(a.priorite)}
+          </div>
+          <div style="font-size: 13px; color: #475569; margin-top: 0.2rem;">
+            ${a.debut ? `Début: ${a.debut}` : ''} ${a.fin ? ` | Fin: ${a.fin}` : ''}
+          </div>
+          ${a.description ? `<div style="font-size: 13px; color: #475569; margin-top: 0.3rem;">${escapeHtml(a.description)}</div>` : ''}
+        </div>
+      `).join('');
+
+      container.innerHTML = html;
+    }
+
+    async function runOptimisation(useCustomJson) {
+      const statusText = document.getElementById('statusText');
+      const resultContainer = document.getElementById('resultContainer');
+      statusText.style.display = 'inline-block';
+      statusText.textContent = 'Calcul en cours...';
+      resultContainer.innerHTML = '<p style="text-align:center; color:#94a3b8;">Calcul en cours...</p>';
+
+      const dateDebut = document.getElementById('dateDebut').value;
+      const dateFin = document.getElementById('dateFin').value;
+      const activitesJson = document.getElementById('activitesJson').value.trim();
+
+      if (!dateDebut || !dateFin) {
+        alert('Veuillez renseigner date début et date fin');
+        statusText.style.display = 'none';
+        return;
+      }
+
+      const params = new URLSearchParams();
+      params.append('userId', CURRENT_USER_ID);
+      params.append('dateDebut', dateDebut);
+      params.append('dateFin', dateFin);
+      if (useCustomJson) {
+        if (!activitesJson) {
+          alert('Veuillez fournir du JSON d\'activités ou utilisez le mode modèle auto.');
+          statusText.style.display = 'none';
+          return;
+        }
+        params.append('activites', activitesJson);
+      }
+
+      try {
+        const resp = await fetch(`${API_BASE}/optimisation/generer`, {
+          method: 'POST',
+          body: params,
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        });
+
+        const data = await resp.json();
+        if (data.status === 'ok') {
+          renderResults(data.activites || []);
+          window.__lastOptimParams = { userId: CURRENT_USER_ID, dateDebut, dateFin, activites: useCustomJson ? activitesJson : '' };
+          const applyBtn = document.getElementById('applyBtn');
+          if (applyBtn) { applyBtn.disabled = !(data.activites && data.activites.length); }
+          showToast('Planning optimisé généré', 'success');
+        } else {
+          resultContainer.innerHTML = `<p style="color: #dc2626;">Erreur: ${escapeHtml(data.error || 'Erreur inconnue')}</p>`;
+          showToast('Erreur pendant la génération', 'error');
+        }
+      } catch (e) {
+        resultContainer.innerHTML = `<p style="color: #dc2626;">Erreur réseau: ${escapeHtml(e.message)}</p>`;
+        showToast('Erreur réseau pendant la génération', 'error');
+      } finally {
+        statusText.style.display = 'none';
+      }
+    }
+    async function applyOptimisation() {
+      const statusText = document.getElementById('statusText');
+      statusText.style.display = 'inline-block';
+      statusText.textContent = 'Application en cours...';
+
+      const last = window.__lastOptimParams || {};
+      if (!last.dateDebut || !last.dateFin) {
+        showToast('Veuillez d\'abord générer un planning', 'warning');
+        statusText.style.display = 'none';
+        return;
+      }
+
+      const params = new URLSearchParams();
+      params.append('userId', CURRENT_USER_ID);
+      params.append('dateDebut', last.dateDebut);
+      params.append('dateFin', last.dateFin);
+      if (last.activites) params.append('activites', last.activites);
+
+      try {
+        const resp = await fetch(`${API_BASE}/optimisation/appliquer`, {
+          method: 'POST',
+          body: params,
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        });
+        const data = await resp.json();
+        if (data.status === 'ok' && data.applied) {
+          showToast('Optimisation appliquée au planning', 'success');
+        } else {
+          showToast('Échec de l\'application', 'error');
+        }
+      } catch (e) {
+        showToast('Erreur réseau pendant l\'application', 'error');
+      } finally {
+        statusText.style.display = 'none';
+      }
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    document.getElementById('runDefault').addEventListener('click', () => runOptimisation(false));
+    document.getElementById('runCustom').addEventListener('click', () => runOptimisation(true));
+    document.getElementById('applyBtn').addEventListener('click', applyOptimisation);
+
+    initUserSession();
+    setDefaultDates();
+  </script>
+</body>
+</html>

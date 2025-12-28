@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Activités - Planner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="../assets/css/style.css" />
+  <style>
+    .activity-item { background: #f5f5f5; padding: 1rem; margin-bottom: 0.8rem; border-left: 4px solid #667eea; border-radius: 4px; display: flex; justify-content: space-between; align-items: flex-start; }
+    .activity-info { flex: 1; }
+    .activity-title { font-weight: 600; font-size: 16px; color: #333; margin: 0; }
+    .activity-meta { font-size: 13px; color: #666; margin-top: 0.5rem; line-height: 1.4; }
+    .activity-actions { display: flex; gap: 0.5rem; margin-left: 1rem; }
+    .btn-small { padding: 0.4rem 0.8rem; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div id="userNav"></div>
+      <div class="brand">
+        <div class="brand-icon"><span>PL</span></div>
+        <div class="brand-text">
+          <strong>Planner</strong>
+          <span>Gestion du temps</span>
+        </div>
+      </div>
+      <div>
+        <p class="nav-section-title">Navigation</p>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html"><span><span class="dot"></span>Tableau de bord</span></a></li>
+          <li class="nav-item"><a class="active" href="activities.html"><span><span class="dot"></span>Activités</span></a></li>
+          <li class="nav-item"><a href="constraints.html"><span><span class="dot"></span>Contraintes</span></a></li>
+          <li class="nav-item"><a href="optimisation.html"><span><span class="dot"></span>Optimisation</span></a></li>
+          <li class="nav-item"><a href="planning.html"><span><span class="dot"></span>Planning</span></a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="main-header">
+        <div class="main-title-block">
+          <h1>Gestion des Activités</h1>
+          <p>Créez, modifiez et organisez vos tâches et événements.</p>
+        </div>
+      </header>
+
+      <!-- Alerte des conflits -->
+      <div id="conflitsAlert" style="display: none; margin: 1rem 2rem; padding: 1rem; border-radius: 8px; border-left: 4px solid;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <h3 style="margin: 0 0 0.5rem 0; font-size: 16px;">⚠️ Conflits détectés</h3>
+            <div id="conflitsList"></div>
+          </div>
+          <button onclick="document.getElementById('conflitsAlert').style.display='none'" style="background: transparent; border: none; font-size: 20px; cursor: pointer; opacity: 0.6;">×</button>
+        </div>
+      </div>
+
+      <section class="main-grid page-section">
+        <article class="card">
+          <div class="card-header">
+            <h2>Nouvelle Activité</h2>
+          </div>
+          <form id="activityForm">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+              <div class="form-row">
+                <label for="titre">Titre *</label>
+                <input id="titre" required placeholder="Ex: Réunion avec le client" />
+              </div>
+              <div class="form-row">
+                <label for="priorite">Priorité</label>
+                <select id="priorite">
+                  <option value="BASSE">Basse</option>
+                  <option value="NORMALE" selected>Normale</option>
+                  <option value="HAUTE">Haute</option>
+                </select>
+              </div>
+              <div class="form-row" style="grid-column: 1 / -1;">
+                <label for="description">Description</label>
+                <textarea id="description" placeholder="Détails supplémentaires..."></textarea>
+              </div>
+              <div class="form-row">
+                <label for="statut">Statut</label>
+                <select id="statut">
+                  <option value="PLANIFIE">Planifié</option>
+                  <option value="EN_COURS">En cours</option>
+                  <option value="TERMINE">Terminé</option>
+                </select>
+              </div>
+              <div class="form-row"></div>
+              <div class="form-row">
+                <label for="debut">Début *</label>
+                <input id="debut" type="datetime-local" required />
+              </div>
+              <div class="form-row">
+                <label for="fin">Fin *</label>
+                <input id="fin" type="datetime-local" required />
+              </div>
+            </div>
+            <div style="margin-top: 1rem;">
+              <button type="submit" class="btn btn-primary">Créer Activité</button>
+              <button type="reset" class="btn btn-ghost" style="margin-left: 0.5rem;">Réinitialiser</button>
+            </div>
+          </form>
+        </article>
+
+        <article class="card">
+          <div class="card-header">
+            <h2>Vos Activités</h2>
+            <span id="actCount">Chargement...</span>
+          </div>
+          <div id="activityListContainer">
+            <p style="text-align: center; color: #999;">Chargement...</p>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <script src="../assets/js/shared.js"></script>
+  <script>
+    let allActivities = [];
+
+    async function loadConflits() {
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const nextWeek = new Date();
+        nextWeek.setDate(nextWeek.getDate() + 7);
+        const nextWeekStr = nextWeek.toISOString().split('T')[0];
+
+        const response = await fetch(`${API_BASE}/conflits?userId=${CURRENT_USER_ID}&start=${today}&end=${nextWeekStr}`);
+        const data = await response.json();
+
+        if (data.status === 'ok' && data.conflits && data.conflits.length > 0) {
+          const alertBox = document.getElementById('conflitsAlert');
+          const list = document.getElementById('conflitsList');
+
+          // Groupe par sévérité
+          const critiques = data.conflits.filter(c => c.severite === 'CRITIQUE');
+          const majeures = data.conflits.filter(c => c.severite === 'MAJEURE');
+
+          let html = '';
+          if (critiques.length > 0) {
+            html += `<div style="margin-bottom: 0.5rem;"><strong style="color: #dc2626;">● CRITIQUE (${critiques.length}):</strong></div>`;
+            critiques.slice(0, 3).forEach(c => {
+              html += `<div style="font-size: 13px; color: #333; margin-left: 1rem; margin-bottom: 0.3rem;">• ${c.description}</div>`;
+            });
+            if (critiques.length > 3) html += `<div style="font-size: 12px; color: #666; margin-left: 1rem;">... et ${critiques.length - 3} autre(s)</div>`;
+          }
+
+          if (majeures.length > 0) {
+            html += `<div style="margin: 0.5rem 0;"><strong style="color: #ea580c;">● MAJEURE (${majeures.length}):</strong></div>`;
+            majeures.slice(0, 3).forEach(c => {
+              html += `<div style="font-size: 13px; color: #333; margin-left: 1rem; margin-bottom: 0.3rem;">• ${c.description}</div>`;
+            });
+            if (majeures.length > 3) html += `<div style="font-size: 12px; color: #666; margin-left: 1rem;">... et ${majeures.length - 3} autre(s)</div>`;
+          }
+
+          list.innerHTML = html;
+          alertBox.style.display = 'block';
+          alertBox.style.backgroundColor = critiques.length > 0 ? '#fee2e2' : '#fed7aa';
+          alertBox.style.borderColor = critiques.length > 0 ? '#dc2626' : '#ea580c';
+          try { showToast(`${data.conflits.length} conflit(s) détecté(s) sur les prochains jours`, critiques.length > 0 ? 'error' : 'warning'); } catch {}
+        } else {
+          document.getElementById('conflitsAlert').style.display = 'none';
+        }
+      } catch (e) {
+        console.error('Erreur chargement conflits:', e);
+      }
+    }
+
+    async function loadActivities() {
+      try {
+        const response = await fetch(`${API_BASE}/activites?userId=${CURRENT_USER_ID}`);
+        const data = await response.json();
+        allActivities = Array.isArray(data) ? data : [];
+        renderActivities();
+      } catch (e) {
+        console.error('Erreur:', e);
+        document.getElementById('activityListContainer').innerHTML = '<p style="color: red;">Erreur de chargement</p>';
+      }
+    }
+
+    function renderActivities() {
+      const container = document.getElementById('activityListContainer');
+      document.getElementById('actCount').textContent = `${allActivities.length} activité(s)`;
+
+      if (allActivities.length === 0) {
+        container.innerHTML = '<p style="text-align: center; color: #999;">Aucune activité</p>';
+        return;
+      }
+
+      const html = allActivities.map(a => `
+        <div class="activity-item">
+          <div class="activity-info">
+            <h3 class="activity-title">${escapeHtml(a.titre)}</h3>
+            <div class="activity-meta">
+              ${a.description ? `<div>Description: ${escapeHtml(a.description)}</div>` : ''}
+              <div>Début: ${a.debut || '-'}</div>
+              <div>Fin: ${a.fin || '-'}</div>
+              <div>Priorité: ${a.priorite} | Statut: ${a.statut}</div>
+            </div>
+          </div>
+          <div class="activity-actions">
+            <button class="btn btn-small btn-ghost" onclick="editActivity(${a.id})">Modifier</button>
+            <button class="btn btn-small" style="background: #ff6b6b; color: white;" onclick="deleteActivity(${a.id})">Supprimer</button>
+          </div>
+        </div>
+      `).join('');
+
+      container.innerHTML = html;
+    }
+
+    document.getElementById('activityForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const titre = document.getElementById('titre').value;
+      const description = document.getElementById('description').value;
+      const priorite = document.getElementById('priorite').value;
+      const statut = document.getElementById('statut').value;
+      const debut = document.getElementById('debut').value;
+      const fin = document.getElementById('fin').value;
+
+      if (!titre || !debut || !fin) {
+        alert('Veuillez remplir tous les champs obligatoires');
+        return;
+      }
+
+      const params = new URLSearchParams();
+      params.append('action', 'create');
+      params.append('userId', CURRENT_USER_ID);
+      params.append('titre', titre);
+      params.append('description', description);
+      params.append('priorite', priorite);
+      params.append('statut', statut);
+      params.append('debut', debut);
+      params.append('fin', fin);
+
+      try {
+        const response = await fetch(`${API_BASE}/activites`, { method: 'POST', body: params, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+        const result = await response.json();
+        if (result.status === 'ok') {
+          if (result.optimised) {
+            alert('Conflit détecté : activités replanifiées automatiquement.');
+          }
+          document.getElementById('activityForm').reset();
+          loadActivities();
+          loadConflits();
+        } else {
+          alert('Erreur: ' + (result.error || 'Création échouée'));
+        }
+      } catch (e) {
+        alert('Erreur serveur: ' + e.message);
+      }
+    });
+
+    async function deleteActivity(id) {
+      if (!confirm('Êtes-vous sûr?')) return;
+
+      const params = new URLSearchParams();
+      params.append('action', 'delete');
+      params.append('id', id);
+
+      try {
+        const response = await fetch(`${API_BASE}/activites`, { method: 'POST', body: params, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+        const result = await response.json();
+        if (result.status === 'ok') {
+          loadActivities();
+          loadConflits();
+        } else {
+          alert('Erreur: ' + (result.error || 'Suppression échouée'));
+        }
+      } catch (e) {
+        alert('Erreur serveur: ' + e.message);
+      }
+    }
+
+    function editActivity(id) {
+      const activity = allActivities.find(a => a.id === id);
+      if (!activity) return;
+
+      document.getElementById('titre').value = activity.titre || '';
+      document.getElementById('description').value = activity.description || '';
+      document.getElementById('priorite').value = activity.priorite || 'NORMALE';
+      document.getElementById('statut').value = activity.statut || 'PLANIFIE';
+      document.getElementById('debut').value = activity.debut || '';
+      document.getElementById('fin').value = activity.fin || '';
+
+      const form = document.getElementById('activityForm');
+      const submitBtn = form.querySelector('button[type=submit]');
+      const originalText = submitBtn.textContent;
+      submitBtn.textContent = 'Mettre à jour';
+
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+
+        const params = new URLSearchParams();
+        params.append('action', 'update');
+        params.append('id', id);
+        params.append('userId', CURRENT_USER_ID);
+        params.append('titre', document.getElementById('titre').value);
+        params.append('description', document.getElementById('description').value);
+        params.append('priorite', document.getElementById('priorite').value);
+        params.append('statut', document.getElementById('statut').value);
+        params.append('debut', document.getElementById('debut').value);
+        params.append('fin', document.getElementById('fin').value);
+
+        try {
+          const response = await fetch(`${API_BASE}/activites`, { method: 'POST', body: params, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+          const result = await response.json();
+          if (result.status === 'ok') {
+            if (result.optimised) {
+              alert('Conflit détecté : activités replanifiées automatiquement.');
+            }
+            form.reset();
+            form.onsubmit = null;
+            submitBtn.textContent = originalText;
+            loadActivities();
+            loadConflits();
+          } else {
+            alert('Erreur: ' + (result.error || 'Mise à jour échouée'));
+          }
+        } catch (e) {
+          alert('Erreur serveur: ' + e.message);
+        }
+      };
+
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    initUserSession();
+    loadActivities();
+    loadConflits();
+    setInterval(() => {
+      loadActivities();
+      loadConflits();
+    }, 30000);
+  </script>
+</body>
+</html>
+

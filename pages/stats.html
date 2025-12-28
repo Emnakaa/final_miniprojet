@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Statistiques & Fatigue - Planner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="../assets/css/style.css" />
+  <style>
+    .stat-card { background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:1rem; }
+    .grid { display:grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap:0.8rem; }
+    .list { margin-top:0.8rem; }
+    .list-item { display:flex; justify-content:space-between; padding:0.5rem 0; border-bottom:1px dashed #e2e8f0; }
+    .pill { background:#e2e8f0; color:#334155; border-radius:999px; padding:0.1rem 0.6rem; font-size:12px; }
+    .badge { padding:0.1rem 0.5rem; border-radius:6px; font-weight:600; font-size:12px; }
+    .badge-low { background:#d1fae5; color:#0f766e; }
+    .badge-med { background:#fde68a; color:#92400e; }
+    .badge-high { background:#fecaca; color:#b91c1c; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div id="userNav"></div>
+      <div class="brand">
+        <div class="brand-icon"><span>PL</span></div>
+        <div class="brand-text">
+          <strong>Planner</strong>
+          <span>Gestion du temps</span>
+        </div>
+      </div>
+      <div>
+        <p class="nav-section-title">Navigation</p>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html"><span><span class="dot"></span>Tableau de bord</span></a></li>
+          <li class="nav-item"><a href="activities.html"><span><span class="dot"></span>Activités</span></a></li>
+          <li class="nav-item"><a href="constraints.html"><span><span class="dot"></span>Contraintes</span></a></li>
+          <li class="nav-item"><a href="optimisation.html"><span><span class="dot"></span>Optimisation</span></a></li>
+          <li class="nav-item"><a class="active" href="stats.html"><span><span class="dot"></span>Statistiques</span></a></li>
+          <li class="nav-item"><a href="planning.html"><span><span class="dot"></span>Planning</span></a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="main-header">
+        <div class="main-title-block">
+          <h1>Statistiques & Indice de Fatigue</h1>
+          <p>Analysez votre charge et le risque de fatigue.</p>
+        </div>
+      </header>
+
+      <section class="main-grid page-section">
+        <article class="card" style="grid-column: 1 / -1;">
+          <div class="card-header"><h2>Période</h2></div>
+          <div class="form-grid">
+            <div class="form-row">
+              <label for="dateDebut">Date début</label>
+              <input id="dateDebut" type="datetime-local" />
+            </div>
+            <div class="form-row">
+              <label for="dateFin">Date fin</label>
+              <input id="dateFin" type="datetime-local" />
+            </div>
+          </div>
+          <div class="form-row" style="margin-top: 0.6rem;">
+            <button class="btn btn-primary" id="runStats">Calculer</button>
+            <span id="statusText" class="pill" style="display:none;">En cours...</span>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-header"><h2>Résumé</h2></div>
+          <div class="grid">
+            <div class="stat-card"><div>Total heures</div><strong id="totalHours">0</strong></div>
+            <div class="stat-card"><div>Jours</div><strong id="days">0</strong></div>
+            <div class="stat-card"><div>Moy. heures/jour</div><strong id="avgHours">0</strong></div>
+            <div class="stat-card"><div>Fatigue moy.</div><strong id="avgFatigue">0</strong></div>
+            <div class="stat-card"><div>Fatigue min</div><strong id="minFatigue">0</strong></div>
+            <div class="stat-card"><div>Fatigue max</div><strong id="maxFatigue">0</strong></div>
+          </div>
+        </article>
+
+        <article class="card" style="grid-column: 1 / -1;">
+          <div class="card-header"><h2>Fatigue quotidienne</h2></div>
+          <div class="list" id="fatigueList">
+            <p style="text-align:center; color:#94a3b8;">Aucune donnée</p>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <script src="../assets/js/shared.js"></script>
+  <script>
+    function formatDateInput(date) {
+      const pad = (n) => n.toString().padStart(2, '0');
+      return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }
+    function setDefaultDates() {
+      const start = new Date(); start.setHours(8,0,0,0);
+      const end = new Date(); end.setDate(end.getDate()+7); end.setHours(18,0,0,0);
+      document.getElementById('dateDebut').value = formatDateInput(start);
+      document.getElementById('dateFin').value = formatDateInput(end);
+    }
+    function badge(val){
+      const v = Number(val||0);
+      if (v < 40) return '<span class="badge badge-low">Bas</span>';
+      if (v < 70) return '<span class="badge badge-med">Moyen</span>';
+      return '<span class="badge badge-high">Élevé</span>';
+    }
+    async function runStats(){
+      const status = document.getElementById('statusText'); status.style.display='inline-block'; status.textContent='Calcul en cours...';
+      const dateDebut = document.getElementById('dateDebut').value;
+      const dateFin = document.getElementById('dateFin').value;
+      if (!dateDebut || !dateFin) { showToast('Dates requises', 'warning'); status.style.display='none'; return; }
+      try {
+        const [fatigueResp, statsResp] = await Promise.all([
+          fetch(`${API_BASE}/fatigue?userId=${CURRENT_USER_ID}&dateDebut=${encodeURIComponent(dateDebut)}&dateFin=${encodeURIComponent(dateFin)}`),
+          fetch(`${API_BASE}/stats?userId=${CURRENT_USER_ID}&dateDebut=${encodeURIComponent(dateDebut)}&dateFin=${encodeURIComponent(dateFin)}`)
+        ]);
+        const fatigueData = await fatigueResp.json();
+        const statsData = await statsResp.json();
+        if (statsData.status==='ok' && statsData.summary){
+          const s = statsData.summary;
+          document.getElementById('totalHours').textContent = s.totalHours;
+          document.getElementById('days').textContent = s.days;
+          document.getElementById('avgHours').textContent = s.avgHoursPerDay;
+          document.getElementById('avgFatigue').textContent = s.avgFatigue;
+          document.getElementById('minFatigue').textContent = s.minFatigue;
+          document.getElementById('maxFatigue').textContent = s.maxFatigue;
+        }
+        if (fatigueData.status==='ok' && fatigueData.daily){
+          const list = fatigueData.daily.map(row => `<div class='list-item'><span>${row.date}</span><span>${row.fatigueIndex} ${badge(row.fatigueIndex)}</span></div>`).join('');
+          document.getElementById('fatigueList').innerHTML = list || '<p style="text-align:center; color:#94a3b8;">Aucune donnée</p>';
+          showToast('Statistiques mises à jour', 'success');
+        } else {
+          showToast('Erreur pendant le calcul', 'error');
+        }
+      } catch(e){
+        showToast('Erreur réseau', 'error');
+      } finally { status.style.display='none'; }
+    }
+    document.getElementById('runStats').addEventListener('click', runStats);
+    initUserSession();
+    setDefaultDates();
+  </script>
+</body>
+</html>

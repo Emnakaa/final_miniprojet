@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Contraintes - Planner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="../assets/css/style.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div id="userNav"></div>
+      <div class="brand">
+        <div class="brand-icon"><span>PL</span></div>
+        <div class="brand-text">
+          <strong>Planner</strong>
+          <span>Gestion du temps</span>
+        </div>
+      </div>
+      <div>
+        <p class="nav-section-title">Navigation</p>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html"><span><span class="dot"></span>Tableau de bord</span></a></li>
+          <li class="nav-item"><a href="activities.html"><span><span class="dot"></span>Activités</span></a></li>
+          <li class="nav-item"><a class="active" href="constraints.html"><span><span class="dot"></span>Contraintes</span></a></li>
+          <li class="nav-item"><a href="optimisation.html"><span><span class="dot"></span>Optimisation</span></a></li>
+          <li class="nav-item"><a href="planning.html"><span><span class="dot"></span>Planning</span></a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="main-header">
+        <div class="main-title-block">
+          <h1>Gestion des Contraintes</h1>
+          <p>Définissez vos disponibilités et périodes bloquées.</p>
+        </div>
+      </header>
+
+      <section class="main-grid page-section">
+        <article class="card">
+          <div class="card-header">
+            <h2>Horaire Récurrent</h2>
+          </div>
+          <form id="horaireForm">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+              <div class="form-row">
+                <label for="jour">Jour</label>
+                <select id="jour">
+                  <option value="LUNDI">Lundi</option>
+                  <option value="MARDI">Mardi</option>
+                  <option value="MERCREDI">Mercredi</option>
+                  <option value="JEUDI">Jeudi</option>
+                  <option value="VENDREDI">Vendredi</option>
+                  <option value="SAMEDI">Samedi</option>
+                  <option value="DIMANCHE">Dimanche</option>
+                </select>
+              </div>
+              <div class="form-row">
+                <label for="typeH">Type</label>
+                <select id="typeH">
+                  <option value="INDISPONIBLE">Indisponible</option>
+                  <option value="DISPONIBLE">Disponible</option>
+                </select>
+              </div>
+              <div class="form-row">
+                <label for="debut">Heure de début</label>
+                <input id="debut" type="time" />
+              </div>
+              <div class="form-row">
+                <label for="fin">Heure de fin</label>
+                <input id="fin" type="time" />
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">Ajouter Horaire</button>
+          </form>
+        </article>
+
+        <article class="card">
+          <div class="card-header">
+            <h2>Période Bloquée</h2>
+          </div>
+          <form id="periodeForm">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+              <div class="form-row" style="grid-column: 1 / -1;">
+                <label for="motif">Raison (ex: Maladie, Congé...)</label>
+                <input id="motif" placeholder="Description" />
+              </div>
+              <div class="form-row">
+                <label for="dateDebut">Début</label>
+                <input id="dateDebut" type="datetime-local" />
+              </div>
+              <div class="form-row">
+                <label for="dateFin">Fin</label>
+                <input id="dateFin" type="datetime-local" />
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary" style="margin-top: 1rem;">Ajouter Période</button>
+          </form>
+        </article>
+
+        <article class="card" style="grid-column: 1 / -1;">
+          <div class="card-header">
+            <h2>Contraintes Actuelles</h2>
+            <span id="constraintCount">Chargement...</span>
+          </div>
+          <div id="constraintList" style="display: grid; gap: 1rem;">
+            <p style="text-align: center; color: #999;">Chargement...</p>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <script src="assets/js/shared.js"></script>
+  <script>
+    async function loadConstraints() {
+      try {
+        const resp = await fetch(`${API_BASE}/contraintes?userId=${CURRENT_USER_ID}`);
+        const data = await resp.json();
+        renderConstraints(data);
+      } catch (e) {
+        console.error('Erreur:', e);
+        document.getElementById('constraintList').innerHTML = '<p style="color: red;">Erreur de chargement</p>';
+      }
+    }
+
+    function renderConstraints(data) {
+      const horaires = data.horaires || [];
+      const personnelles = data.personnelles || [];
+      const total = horaires.length + personnelles.length;
+      document.getElementById('constraintCount').textContent = `${total} contrainte(s)`;
+
+      let html = '';
+
+      if (horaires.length > 0) {
+        html += '<div><h3>Horaires récurrents</h3>';
+        html += horaires.map(c => `
+          <div style="background: #f0f4ff; padding: 0.8rem; border-left: 4px solid #667eea; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; color:#333;">
+            <div style="color:#333;">
+              <strong>${c.jour}</strong> - ${c.debut || '--'} à ${c.fin || '--'}
+              <div style="font-size: 0.9rem; color: #666; margin-top: 0.2rem;">${c.type}</div>
+            </div>
+            <button class="btn btn-small" style="background: #ff6b6b; color: white;" onclick="deleteConstraint(${c.id})">Supprimer</button>
+          </div>
+        `).join('');
+        html += '</div>';
+      }
+
+      if (personnelles.length > 0) {
+        html += '<div><h3>Périodes bloquées</h3>';
+        html += personnelles.map(c => `
+          <div style="background: #fff5f5; padding: 0.8rem; border-left: 4px solid #f5576c; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; color:#333;">
+            <div style="color:#333;">
+              <strong>${c.motif || 'Sans titre'}</strong>
+              <div style="font-size: 0.9rem; color: #666; margin-top: 0.2rem;">
+                ${c.debut ? c.debut.substring(0, 10) : '-'} à ${c.fin ? c.fin.substring(0, 10) : '-'}
+              </div>
+            </div>
+            <button class="btn btn-small" style="background: #ff6b6b; color: white;" onclick="deleteConstraint(${c.id})">Supprimer</button>
+          </div>
+        `).join('');
+        html += '</div>';
+      }
+
+      if (!html) {
+        html = '<p style="text-align: center; color: #999; padding: 2rem;">Aucune contrainte définie</p>';
+      }
+
+      document.getElementById('constraintList').innerHTML = html;
+    }
+
+    document.getElementById('horaireForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const params = new URLSearchParams();
+      params.append('scope', 'horaire');
+      params.append('action', 'create');
+      params.append('userId', CURRENT_USER_ID);
+      params.append('jour', document.getElementById('jour').value);
+      params.append('type', document.getElementById('typeH').value);
+      params.append('debut', document.getElementById('debut').value);
+      params.append('fin', document.getElementById('fin').value);
+
+      try {
+        const response = await fetch(`${API_BASE}/contraintes`, { method: 'POST', body: params, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+        const result = await response.json();
+        if (result.status === 'ok') {
+          document.getElementById('horaireForm').reset();
+          loadConstraints();
+        } else {
+          alert('Erreur: ' + (result.error || 'Ajout échoué'));
+        }
+      } catch (e) {
+        alert('Erreur serveur');
+      }
+    });
+
+    document.getElementById('periodeForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const params = new URLSearchParams();
+      params.append('scope', 'personnelle');
+      params.append('action', 'create');
+      params.append('userId', CURRENT_USER_ID);
+      params.append('motif', document.getElementById('motif').value);
+      params.append('type', 'ABSENT');
+      params.append('debut', document.getElementById('dateDebut').value);
+      params.append('fin', document.getElementById('dateFin').value);
+
+      try {
+        const response = await fetch(`${API_BASE}/contraintes`, { method: 'POST', body: params, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+        const result = await response.json();
+        if (result.status === 'ok') {
+          document.getElementById('periodeForm').reset();
+          loadConstraints();
+        } else {
+          alert('Erreur: ' + (result.error || 'Ajout échoué'));
+        }
+      } catch (e) {
+        alert('Erreur serveur');
+      }
+    });
+
+    async function deleteConstraint(id) {
+      if (!confirm('Supprimer cette contrainte?')) return;
+      const params = new URLSearchParams();
+      params.append('action', 'delete');
+      params.append('id', id);
+
+      try {
+        const response = await fetch(`${API_BASE}/contraintes`, { method: 'POST', body: params, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } });
+        const result = await response.json();
+        if (result.status === 'ok') {
+          loadConstraints();
+        } else {
+          alert('Erreur');
+        }
+      } catch (e) {
+        alert('Erreur serveur');
+      }
+    }
+
+    initUserSession();
+    loadConstraints();
+    setInterval(loadConstraints, 30000);
+  </script>
+</body>
+</html>

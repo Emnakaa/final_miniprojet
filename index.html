@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Tableau de Bord - Planner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="assets/css/style.css" />
+  <style>
+    .stat-card { background: linear-gradient(135deg, #334155 0%, #475569 100%); color: white; padding: 1.5rem; border-radius: 16px; text-align: center; box-shadow: 0 8px 24px rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); }
+    .stat-card.activities { background: linear-gradient(135deg, #475569 0%, #64748b 100%); }
+    .stat-card.constraints { background: linear-gradient(135deg, #64748b 0%, #78716c 100%); }
+    .stat-card.tasks { background: linear-gradient(135deg, #0f766e 0%, #0d9488 100%); }
+    .stat-number { font-size: 2.5rem; font-weight: bold; margin: 0.5rem 0; }
+    .stat-label { font-size: 0.9rem; opacity: 0.9; }
+    .activity-list { list-style: none; padding: 0; margin: 0; }
+    .activity-item { padding: 0.8rem; border-left: 4px solid #667eea; background: linear-gradient(120deg, #f9f9f9 0%, #f3f4f6 100%); margin-bottom: 0.5rem; border-radius: 8px; color: #333; }
+    .activity-title { font-weight: 600; margin: 0; font-size: 14px; color: #333; }
+    .activity-time { font-size: 12px; color: #666; margin-top: 0.2rem; }
+    .fatigue-section { background: linear-gradient(160deg, rgba(79,70,229,0.1) 0%, rgba(15,23,42,0.96) 100%); border: 1px solid rgba(79,70,229,0.3); }
+    .fatigue-metric { background: rgba(15,23,42,0.5); border-radius: 12px; padding: 0.8rem; border: 1px solid rgba(129,140,248,0.3); }
+    .fatigue-label { font-size: 0.75rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.05em; }
+    .fatigue-value { font-size: 1.5rem; font-weight: bold; color: #e5e7eb; margin: 0.3rem 0; }
+    .fatigue-bar { background: rgba(148,163,184,0.3); border-radius: 999px; height: 6px; overflow: hidden; }
+    .fatigue-bar-fill { height: 100%; background: linear-gradient(90deg, #4f46e5, #06b6d4); border-radius: 999px; transition: width 0.3s ease; }
+    .fatigue-day { width: 20px; height: 20px; border-radius: 4px; border: 1px solid rgba(148,163,184,0.4); }
+    .btn-small { padding: 0.3rem 0.6rem; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div id="userNav"></div>
+      <div class="brand">
+        <div class="brand-icon"><span>PL</span></div>
+        <div class="brand-text">
+          <strong>Planner</strong>
+          <span>Gestion du temps</span>
+        </div>
+      </div>
+      <div>
+        <p class="nav-section-title">Navigation</p>
+        <ul class="nav-list">
+          <li class="nav-item"><a class="active" href="index.html"><span><span class="dot"></span>Tableau de bord</span></a></li>
+          <li class="nav-item"><a href="pages/activities.html"><span><span class="dot"></span>Activités</span></a></li>
+          <li class="nav-item"><a href="pages/constraints.html"><span><span class="dot"></span>Contraintes</span></a></li>
+          <li class="nav-item"><a href="pages/optimisation.html"><span><span class="dot"></span>Optimisation</span></a></li>
+          <li class="nav-item"><a href="pages/planning.html"><span><span class="dot"></span>Planning</span></a></li>
+        </ul>
+      </div>
+      <div class="sidebar-footer">
+        <div><small>Connecté(e) le <span id="currentTime">--:--</span></small></div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="main-header">
+        <div class="main-title-block">
+          <h1>Tableau de Bord</h1>
+          <p>Vue d'ensemble de vos activités et planifications.</p>
+        </div>
+        <div class="main-actions">
+          <button class="btn btn-primary" onclick="window.location.href='pages/activities.html'">+ Nouvelle Activité</button>
+          <button class="btn btn-ghost" onclick="window.location.href='pages/planning.html'">Voir Planning</button>
+        </div>
+      </header>
+
+      <section class="main-grid page-section">
+        <!-- Stats Row -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; grid-column: 1 / -1;">
+          <div class="stat-card">
+            <div class="stat-label">Activités</div>
+            <div class="stat-number" id="statActivities">0</div>
+          </div>
+          <div class="stat-card activities">
+            <div class="stat-label">Tâches Terminées</div>
+            <div class="stat-number" id="statCompleted">0</div>
+          </div>
+          <div class="stat-card constraints">
+            <div class="stat-label">Contraintes</div>
+            <div class="stat-number" id="statConstraints">0</div>
+          </div>
+          <div class="stat-card tasks">
+            <div class="stat-label">En Cours</div>
+            <div class="stat-number" id="statInProgress">0</div>
+          </div>
+        </div>
+
+        <!-- Fatigue Stats Section -->
+        <article class="card fatigue-section" style="grid-column: 1 / -1;">
+          <div class="card-header">
+            <div>
+              <h2>Indice de Fatigue</h2>
+              <p style="font-size:0.75rem; color:#9ca3af; margin-top:0.2rem;">7 derniers jours</p>
+            </div>
+            <button class="btn btn-small" id="refreshFatigue">Rafraîchir</button>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.8rem;">
+            <div class="fatigue-metric">
+              <div class="fatigue-label">Moyenne</div>
+              <div class="fatigue-value" id="fatigueAvg">--</div>
+              <div class="fatigue-bar"><div class="fatigue-bar-fill" id="fatigueAvgBar"></div></div>
+            </div>
+            <div class="fatigue-metric">
+              <div class="fatigue-label">Max</div>
+              <div class="fatigue-value" id="fatigueMax">--</div>
+              <div class="fatigue-bar"><div class="fatigue-bar-fill" id="fatigueMaxBar" style="background:#ef4444;"></div></div>
+            </div>
+            <div class="fatigue-metric">
+              <div class="fatigue-label">Min</div>
+              <div class="fatigue-value" id="fatigueMin">--</div>
+              <div class="fatigue-bar"><div class="fatigue-bar-fill" id="fatigueMinBar" style="background:#10b981;"></div></div>
+            </div>
+            <div class="fatigue-metric">
+              <div class="fatigue-label">Heures/jour</div>
+              <div class="fatigue-value" id="fatigueHours">--</div>
+              <div class="fatigue-bar"><div class="fatigue-bar-fill" id="fatigueHoursBar" style="background:#8b5cf6;"></div></div>
+            </div>
+          </div>
+          <div id="fatigueDaily" style="margin-top:1rem; display:flex; gap:0.3rem; flex-wrap:wrap; max-height:100px; overflow-y:auto;"></div>
+        </article>
+
+        <!-- Activities Section -->
+        <article class="card">
+          <div class="card-header">
+            <h2>Activités Récentes</h2>
+            <a href="pages/activities.html" style="color: #667eea; text-decoration: none; font-size: 0.9rem;">Voir tout →</a>
+          </div>
+          <ul class="activity-list" id="recentActivities">
+            <li style="text-align: center; color: #999; padding: 1rem;">Chargement...</li>
+          </ul>
+        </article>
+
+        <!-- Planning Preview -->
+        <article class="card">
+          <div class="card-header">
+            <h2>Planning de la Semaine</h2>
+            <a href="pages/planning.html" style="color: #667eea; text-decoration: none; font-size: 0.9rem;">Détails →</a>
+          </div>
+          <div id="weekPlanPreview" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.5rem; font-size: 12px;">
+            <div style="text-align: center; color: #999;">Chargement...</div>
+          </div>
+        </article>
+
+        <!-- Contraintes Summary -->
+        <article class="card">
+          <div class="card-header">
+            <h2>Contraintes Actuelles</h2>
+            <a href="pages/constraints.html" style="color: #667eea; text-decoration: none; font-size: 0.9rem;">Gérer →</a>
+          </div>
+          <div id="constraintsSummary" style="display: grid; gap: 0.8rem;">
+            <p style="text-align: center; color: #999;">Chargement...</p>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <script src="assets/js/shared.js"></script>
+  <script>
+    async function loadDashboard() {
+      // Load activities
+      try {
+        const resp = await fetch(`${API_BASE}/activites?userId=${CURRENT_USER_ID}`);
+        const activities = await resp.json();
+        
+        // Stats (robust: compute using timestamps + statut)
+        document.getElementById('statActivities').textContent = activities.length;
+        const now = new Date();
+        const completed = activities.filter(a => {
+          if (a.statut === 'TERMINE') return true;
+          const end = a.fin ? new Date(a.fin) : null;
+          return end && end < now; // finished in the past
+        }).length;
+        const inProgress = activities.filter(a => {
+          if (a.statut === 'EN_COURS') return true;
+          const start = a.debut ? new Date(a.debut) : null;
+          const end = a.fin ? new Date(a.fin) : null;
+          return start && end && start <= now && now <= end; // ongoing window
+        }).length;
+        document.getElementById('statCompleted').textContent = completed;
+        document.getElementById('statInProgress').textContent = inProgress;
+
+        // Recent activities
+        const recent = activities.slice(0, 5);
+        const recentHtml = recent.map(a => `
+          <li class="activity-item">
+            <div class="activity-title">${escapeHtml(a.titre)}</div>
+            <div class="activity-time">Date: ${a.debut ? a.debut.substring(0, 10) : '-'}</div>
+          </li>
+        `).join('');
+        document.getElementById('recentActivities').innerHTML = recentHtml || '<li style="text-align: center; color: #999;">Aucune activité</li>';
+      } catch (e) {
+        console.error('Erreur activités:', e);
+      }
+
+      // Load constraints
+      try {
+        const resp = await fetch(`${API_BASE}/contraintes?userId=${CURRENT_USER_ID}`);
+        const data = await resp.json();
+        const total = (data.horaires?.length || 0) + (data.personnelles?.length || 0);
+        document.getElementById('statConstraints').textContent = total;
+
+        let constraintHtml = '';
+        if (data.horaires && data.horaires.length > 0) {
+          constraintHtml += '<div><strong>Horaires:</strong> ' + data.horaires.length + ' configurées</div>';
+        }
+        if (data.personnelles && data.personnelles.length > 0) {
+          constraintHtml += '<div><strong>Périodes bloquées:</strong> ' + data.personnelles.length + ' définies</div>';
+        }
+        if (!constraintHtml) {
+          constraintHtml = '<p style="text-align: center; color: #999;">Aucune contrainte</p>';
+        }
+        document.getElementById('constraintsSummary').innerHTML = constraintHtml;
+      } catch (e) {
+        console.error('Erreur contraintes:', e);
+      }
+
+      // Week preview
+      try {
+        const start = new Date();
+        const end = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
+        const resp = await fetch(`${API_BASE}/planning?userId=${CURRENT_USER_ID}&start=${start.toISOString().split('T')[0]}&end=${end.toISOString().split('T')[0]}`);
+        const planning = await resp.json();
+        
+        const dayNames = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+        let weekHtml = '';
+        for (let i = 0; i < 7; i++) {
+          const day = new Date(start.getTime() + i * 24 * 60 * 60 * 1000);
+          const dayKey = day.toISOString().split('T')[0];
+          const dayActivities = planning.filter(a => a.start && a.start.startsWith(dayKey));
+          weekHtml += `<div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 0.5rem; border-radius: 4px; text-align: center;">
+            <div style="font-weight: 600; color: #334155;">${dayNames[i]}</div>
+            <div style="font-size: 0.8rem; color: #64748b;">${dayActivities.length} tâche(s)</div>
+          </div>`;
+        }
+        document.getElementById('weekPlanPreview').innerHTML = weekHtml;
+      } catch (e) {
+        console.error('Erreur planning:', e);
+      }
+
+      // Load fatigue stats (7 days)
+      loadFatigueStats();
+
+      // Update clock
+      setInterval(() => {
+        const now = new Date();
+        document.getElementById('currentTime').textContent = now.toLocaleTimeString('fr-FR');
+      }, 1000);
+    }
+
+    async function loadFatigueStats() {
+      try {
+        const end = new Date();
+        const start = new Date(end.getTime() - 7 * 24 * 60 * 60 * 1000);
+        const startIso = start.toISOString().split('T')[0] + 'T00:00:00';
+        const endIso = end.toISOString().split('T')[0] + 'T23:59:59';
+
+        const [fatigueResp, statsResp] = await Promise.all([
+          fetch(`${API_BASE}/fatigue?userId=${CURRENT_USER_ID}&dateDebut=${encodeURIComponent(startIso)}&dateFin=${encodeURIComponent(endIso)}`),
+          fetch(`${API_BASE}/stats?userId=${CURRENT_USER_ID}&dateDebut=${encodeURIComponent(startIso)}&dateFin=${encodeURIComponent(endIso)}`)
+        ]);
+
+        const fatigueData = await fatigueResp.json();
+        const statsData = await statsResp.json();
+
+        if (statsData.status === 'ok' && statsData.summary) {
+          const s = statsData.summary;
+          document.getElementById('fatigueAvg').textContent = s.avgFatigue.toFixed(0);
+          document.getElementById('fatigueMax').textContent = s.maxFatigue.toFixed(0);
+          document.getElementById('fatigueMin').textContent = s.minFatigue.toFixed(0);
+          document.getElementById('fatigueHours').textContent = s.avgHoursPerDay.toFixed(1);
+          
+          document.getElementById('fatigueAvgBar').style.width = (s.avgFatigue / 100 * 100) + '%';
+          document.getElementById('fatigueMaxBar').style.width = (s.maxFatigue / 100 * 100) + '%';
+          document.getElementById('fatigueMinBar').style.width = (s.minFatigue / 100 * 100) + '%';
+          document.getElementById('fatigueHoursBar').style.width = Math.min(s.avgHoursPerDay / 8 * 100, 100) + '%';
+        }
+
+        if (fatigueData.status === 'ok' && fatigueData.daily) {
+          const dailyHtml = fatigueData.daily.map(d => {
+            const val = d.fatigueIndex;
+            let color = '#10b981'; // green < 40
+            if (val >= 40 && val < 70) color = '#f59e0b'; // amber
+            if (val >= 70) color = '#ef4444'; // red
+            return `<div class="fatigue-day" title="${d.date}: ${val}"><div style="background:${color}; width:100%; height:100%; border-radius:4px;"></div></div>`;
+          }).join('');
+          document.getElementById('fatigueDaily').innerHTML = dailyHtml;
+        }
+      } catch (e) {
+        console.error('Erreur fatigue:', e);
+      }
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    document.getElementById('refreshFatigue')?.addEventListener('click', loadFatigueStats);
+    initUserSession();
+    loadDashboard();
+    setInterval(loadDashboard, 60000); // Refresh every minute
+  </script>
+</body>
+</html>

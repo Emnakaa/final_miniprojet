@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Planning - Planner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="../assets/css/style.css" />
+  <style>
+    .calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1rem; }
+    .day-column { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 0.8rem; min-height: 400px; }
+    .day-header { font-weight: 600; color: #334155; margin-bottom: 0.5rem; text-align: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.5rem; }
+    .day-date { font-size: 0.9rem; color: #64748b; text-align: center; }
+    .event { background: #475569; color: white; padding: 0.5rem; margin-top: 0.5rem; border-radius: 4px; font-size: 12px; cursor: pointer; }
+    .event.high { background: #dc2626; }
+    .event.medium { background: #334155; }
+    .event.low { background: #0f766e; }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div id="userNav"></div>
+      <div class="brand">
+        <div class="brand-icon"><span>PL</span></div>
+        <div class="brand-text">
+          <strong>Planner</strong>
+          <span>Gestion du temps</span>
+        </div>
+      </div>
+      <div>
+        <p class="nav-section-title">Navigation</p>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="../index.html"><span><span class="dot"></span>Tableau de bord</span></a></li>
+          <li class="nav-item"><a href="activities.html"><span><span class="dot"></span>Activités</span></a></li>
+          <li class="nav-item"><a href="constraints.html"><span><span class="dot"></span>Contraintes</span></a></li>
+          <li class="nav-item"><a href="optimisation.html"><span><span class="dot"></span>Optimisation</span></a></li>
+          <li class="nav-item"><a class="active" href="planning.html"><span><span class="dot"></span>Planning</span></a></li>
+        </ul>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="main-header">
+        <div class="main-title-block">
+          <h1>Votre Planning</h1>
+          <p>Vue hebdomadaire de vos activités organisées.</p>
+        </div>
+        <div class="main-actions">
+          <button class="btn btn-ghost" id="prevWeek">← Semaine précédente</button>
+          <button class="btn btn-ghost" id="nextWeek">Semaine suivante →</button>
+          <button class="btn btn-primary" onclick="window.location.href='activities.html'">+ Activité</button>
+        </div>
+      </header>
+
+      <!-- Alerte des conflits -->
+      <div id="conflitsAlert" style="display: none; margin: 1rem 2rem; padding: 1rem; border-radius: 8px; border-left: 4px solid;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <h3 style="margin: 0 0 0.5rem 0; font-size: 16px;">⚠️ Conflits cette semaine</h3>
+            <div id="conflitsList"></div>
+          </div>
+          <button onclick="document.getElementById('conflitsAlert').style.display='none'" style="background: transparent; border: none; font-size: 20px; cursor: pointer; opacity: 0.6;">×</button>
+        </div>
+      </div>
+
+      <section class="main-grid page-section">
+        <article class="card" style="grid-column: 1 / -1;">
+          <div class="card-header">
+            <h2 id="weekTitle">Semaine du --</h2>
+            <span id="eventCount">Chargement...</span>
+          </div>
+          <div class="calendar" id="calendar">
+            <div style="grid-column: 1 / -1; text-align: center; color: #999; padding: 2rem;">Chargement du planning...</div>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <script src="../assets/js/shared.js"></script>
+  <script>
+    let currentDate = new Date();
+    currentDate.setDate(currentDate.getDate() - currentDate.getDay() + 1); // Start from Monday
+
+    const dayNames = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+    const dayLongNames = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+
+    async function loadConflits() {
+      const startDate = new Date(currentDate);
+      const endDate = new Date(currentDate);
+      endDate.setDate(endDate.getDate() + 6);
+
+      const startStr = startDate.toISOString().split('T')[0];
+      const endStr = endDate.toISOString().split('T')[0];
+
+      try {
+        const response = await fetch(`${API_BASE}/conflits?userId=${CURRENT_USER_ID}&start=${startStr}&end=${endStr}`);
+        const data = await response.json();
+
+        if (data.status === 'ok' && data.conflits && data.conflits.length > 0) {
+          const alertBox = document.getElementById('conflitsAlert');
+          const list = document.getElementById('conflitsList');
+
+          const critiques = data.conflits.filter(c => c.severite === 'CRITIQUE');
+          const majeures = data.conflits.filter(c => c.severite === 'MAJEURE');
+
+          let html = '';
+          if (critiques.length > 0) {
+            html += `<div style="margin-bottom: 0.5rem;"><strong style="color: #dc2626;">● CRITIQUE (${critiques.length}):</strong></div>`;
+            critiques.slice(0, 3).forEach(c => {
+              html += `<div style="font-size: 13px; color: #333; margin-left: 1rem; margin-bottom: 0.3rem;">• ${c.description}</div>`;
+            });
+            if (critiques.length > 3) html += `<div style="font-size: 12px; color: #666; margin-left: 1rem;">... et ${critiques.length - 3} autre(s)</div>`;
+          }
+
+          if (majeures.length > 0) {
+            html += `<div style="margin: 0.5rem 0;"><strong style="color: #ea580c;">● MAJEURE (${majeures.length}):</strong></div>`;
+            majeures.slice(0, 3).forEach(c => {
+              html += `<div style="font-size: 13px; color: #333; margin-left: 1rem; margin-bottom: 0.3rem;">• ${c.description}</div>`;
+            });
+            if (majeures.length > 3) html += `<div style="font-size: 12px; color: #666; margin-left: 1rem;">... et ${majeures.length - 3} autre(s)</div>`;
+          }
+
+          list.innerHTML = html;
+          alertBox.style.display = 'block';
+          alertBox.style.backgroundColor = critiques.length > 0 ? '#fee2e2' : '#fed7aa';
+          alertBox.style.borderColor = critiques.length > 0 ? '#dc2626' : '#ea580c';
+          try { showToast(`${data.conflits.length} conflit(s) cette semaine`, critiques.length > 0 ? 'error' : 'warning'); } catch {}
+        } else {
+          document.getElementById('conflitsAlert').style.display = 'none';
+        }
+      } catch (e) {
+        console.error('Erreur chargement conflits:', e);
+      }
+    }
+
+    async function loadPlanning() {
+      const startDate = new Date(currentDate);
+      const endDate = new Date(currentDate);
+      endDate.setDate(endDate.getDate() + 6);
+
+      const startStr = startDate.toISOString().split('T')[0];
+      const endStr = endDate.toISOString().split('T')[0];
+
+      try {
+        const resp = await fetch(`${API_BASE}/planning?userId=${CURRENT_USER_ID}&start=${startStr}&end=${endStr}`);
+        const activities = await resp.json();
+
+        // Group by day
+        const days = {};
+        dayNames.forEach((name, idx) => {
+          const day = new Date(startDate);
+          day.setDate(day.getDate() + idx);
+          const dayKey = day.toISOString().split('T')[0];
+          days[dayKey] = [];
+        });
+
+        activities.forEach(a => {
+          if (a.start) {
+            const dayKey = a.start.substring(0, 10);
+            if (days[dayKey]) {
+              days[dayKey].push(a);
+            }
+          }
+        });
+
+        renderCalendar(days, startDate);
+        document.getElementById('eventCount').textContent = `${activities.length} activité(s)`;
+        loadConflits();
+      } catch (e) {
+        console.error('Erreur:', e);
+        document.getElementById('calendar').innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: red;">Erreur de chargement</div>';
+      }
+    }
+
+    function renderCalendar(days, weekStart) {
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      const options = { year: 'numeric', month: 'long', day: 'numeric' };
+      document.getElementById('weekTitle').textContent = `Semaine du ${weekStart.toLocaleDateString('fr-FR', options)}`;
+
+      let html = '';
+      dayNames.forEach((dayName, idx) => {
+        const day = new Date(weekStart);
+        day.setDate(day.getDate() + idx);
+        const dayKey = day.toISOString().split('T')[0];
+        const dayActivities = days[dayKey] || [];
+
+        const eventColor = (priority) => {
+          if (priority === 'HAUTE') return 'high';
+          if (priority === 'BASSE') return 'low';
+          return 'medium';
+        };
+
+        html += `
+          <div class="day-column">
+            <div class="day-header">${dayName}</div>
+            <div class="day-date">${day.getDate()}/${day.getMonth() + 1}</div>
+            ${dayActivities.map(a => `
+              <div class="event ${eventColor(a.priority)}" title="${escapeHtml(a.title)}">
+                <strong>${escapeHtml(a.title)}</strong>
+                <div style="font-size: 11px; opacity: 0.9;">${a.start ? a.start.substring(11, 16) : '-'}</div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      });
+
+      document.getElementById('calendar').innerHTML = html;
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    document.getElementById('prevWeek').addEventListener('click', () => {
+      currentDate.setDate(currentDate.getDate() - 7);
+      loadPlanning();
+    });
+
+    document.getElementById('nextWeek').addEventListener('click', () => {
+      currentDate.setDate(currentDate.getDate() + 7);
+      loadPlanning();
+    });
+
+    initUserSession();
+    loadPlanning();
+  </script>
+</body>
+</html>
